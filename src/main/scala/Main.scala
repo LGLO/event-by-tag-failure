@@ -29,6 +29,7 @@ object Main extends App {
   }
 
   def read(low: Int, high: Int) = {
+    val t0 = System.currentTimeMillis()
     val n = high - low + 1
     cassandraReadJournal
       .eventsByTag(Agg.tag, TimeBasedUUID(cassandraReadJournal.firstOffset))
@@ -38,17 +39,24 @@ object Main extends App {
           e
       }
       .take(n)
-      .takeWithin(1.minute)
+      .takeWithin(2.minutes)
       .runWith(Sink.seq)
-      .map(es => println(s"Read ${es.size} of expected $n events."))
+      .map {
+        es =>
+          println(s"Read ${es.size} of expected $n events.")
+          System.currentTimeMillis() - t0
+      }
   }
 
   println(s"Tag is ${Agg.tag}")
   //Just to initialize, it turns out that this is important in runtime.
   createAgg(0)
-  Await.ready(read(0, 0), 1.minute)
+  Await.ready(read(0, 0), 3.minutes)
   //Agg 0 - is ready and visible
-  read(0, N) // Start reading all events (Agg 0 included, it has same tag).
+  read(0, N).map { time => // Start reading all events (Agg 0 included, it has same tag).
+    println(s"Time: $time")
+    System.exit(0)
+  }
   Thread.sleep(1000) // CassandraReadQuery should be ready  
   (1 to N).foreach(createAgg) // Create burst of Aggs
 }
